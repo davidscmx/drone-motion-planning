@@ -4,12 +4,91 @@ import msgpack
 from enum import Enum, auto
 
 import numpy as np
+import csv
+import time
+import networkx as nx
+import pickle
+import os
 
-from planning_utils import a_star, heuristic, create_grid
+from planning_utils import *
+
+#/home/david/miniconda3/envs/fcnd/lib/python3.6/site-packages/udacidrone
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
-from udacidrone.frame_utils import global_to_local
+from udacidrone.frame_utils import global_to_local,local_to_global
+
+
+def bres(p1, p2):
+    """
+    Note this solution requires `x1` < `x2` and `y1` < `y2`.
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+    cells = []
+    
+    # Here's a quick explanation in math terms of our approach
+    # First, set dx = x2 - x1 and dy = y2 - y1
+    dx, dy = x2 - x1, y2 - y1
+    # Then define a new quantity: d = x dy - y dx.
+    # and set d = 0 initially
+    d = 0
+    # The condition we care about is whether 
+    # (x + 1) * m < y + 1 or moving things around a bit: 
+    # (x + 1) dy / dx < y + 1 
+    # which implies: x dy - y dx < dx - dy
+    # or in other words: d < dx - dy is our new condition
+    
+    # Initialize i, j indices
+    i = x1
+    j = y1
+    
+    while i < x2 and j < y2:
+        cells.append([i, j])
+        if d < dx - dy:
+            d += dy
+            i += 1
+        elif d == dx - dy:
+            # uncomment these two lines for conservative approach
+            cells.append([i+1, j])
+            cells.append([i, j+1])
+            d += dy
+            i += 1  
+            d -= dx
+            j += 1
+        else:
+            d -= dx
+            j += 1
+
+    return np.array(cells)
+
+def prune_with_bresenham(waypoints, grid):
+    
+    waypoints = [(int(round(wp[0])), int(round(wp[1]))) for wp in waypoints]
+    start = waypoints[0]    
+    reference = start
+    print("waypoints in bres", waypoints, len(waypoints), waypoints[0])
+    new_waypoints = []
+    new_waypoints.append(start)
+    
+    for i in range(1, len(waypoints)-1):
+        p1 = reference
+        p2 = waypoints[i]
+        print(p1,p2)
+        cells = bres(p1, p2)
+        
+        for c in cells:
+            # First check if we're off the map
+            if np.amin(c) < 0 or c[0] >= grid.shape[0] or c[1] >= grid.shape[1]:
+                break
+            # Next check if we're in collision
+            if grid[c[0], c[1]] == 1:
+                reference = waypoints[i]
+                new_waypoints.append(waypoints[i-1])
+                break
+
+    new_waypoints.append(waypoints[-1])
+    return new_waypoints
 
 
 class States(Enum):
@@ -21,8 +100,9 @@ class States(Enum):
     DISARMING = auto()
     PLANNING = auto()
 
-
-class MotionPlanning(Drone):
+# Assuming you've already created the grid
+# The medial_axis() method requires that we invert the grid image
+class MotionPlanner(Drone):
 
     def __init__(self, connection):
         super().__init__(connection)
@@ -111,6 +191,39 @@ class MotionPlanning(Drone):
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
+
+    def point(self, p):
+        return np.array([p[0], p[1], 1.]).reshape(1, -1)
+
+    def collinearity_check   (self, p1, p2, p3, epsilon=2):   
+        #print((p1, p2, p3))
+        m = np.concatenate((p1, p2, p3), 0)
+        det = np.linalg.det(m)
+        return abs(det) < epsilon
+    
+    def prune_path(self, path):
+        pruned_path = [p for p in path]
+        
+        i = 0
+        while i < len(pruned_path) - 2:
+            p1 = self.point(pruned_path[i])
+            p2 = self.point(pruned_path[i+1])
+            p3 = self.point(pruned_path[i+2])
+        
+            # If the 3 points are in a line remove
+            # the 2nd point.
+            # The 3rd point now becomes and 2nd point
+            # and the check is redone with a new third point
+            # on the next iteration.
+            if self.collinearity_check(p1, p2, p3):
+                # Something subtle here but we can mutate
+                # `pruned_path` freely because the length
+                # of the list is check on every iteration.
+                pruned_path.remove(pruned_path[i+1])
+            else:
+                i += 1
+        return pruned_path
+
     def plan_path(self):
         self.flight_state = States.PLANNING
         print("Searching for a path ...")
@@ -119,43 +232,90 @@ class MotionPlanning(Drone):
 
         self.target_position[2] = TARGET_ALTITUDE
 
-        # TODO: read lat0, lon0 from colliders into floating point values
+        # read lat0, lon0 from colliders into floating point values
+        with open('colliders.csv') as f:
+            initial_point_str = f.read().splitlines()[0].replace(",","").split()
+            lat0, lon0 = float(initial_point_str[1]), float(initial_point_str[3])
         
-        # TODO: set home position to (lon0, lat0, 0)
-
-        # TODO: retrieve current global position
- 
-        # TODO: convert to current local position using global_to_local()
+        self.set_home_position(lon0, lat0, 0)
+        # convert to current local position using global_to_local()
+        self._north, self._east, self._down   = global_to_local(self.global_position, self.global_home).ravel() 
         
+        print("Home Position ", (lon0, lat0, 0) )
         print('global home {0}, position {1}, local position {2}'.format(self.global_home, self.global_position,
                                                                          self.local_position))
-        # Read in obstacle map
+        #for p in self.polygons:
+
         data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
         
         # Define a grid for a particular altitude and safety margin around obstacles
-        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
-        # Define starting point on the grid (this is just grid center)
-        grid_start = (-north_offset, -east_offset)
-        # TODO: convert start position to current position rather than map center
+        grid, north_offset, east_offset, points = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         
-        # Set goal as some arbitrary position on the grid
-        grid_goal = (-north_offset + 10, -east_offset + 10)
-        # TODO: adapt to set goal as latitude / longitude position and convert
+        # map coordinates as given in the csv file
+        start_ne = (self.local_position[0] - north_offset, self.local_position[1] - east_offset, 5)
+        goal_ne = (750, 370, 5)    
 
-        # Run A* to find a path from start to goal
-        # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
-        # or move to a different search space such as a graph (not done here)
-        print('Local Start and Goal: ', grid_start, grid_goal)
-        path, _ = a_star(grid, heuristic, grid_start, grid_goal)
-        # TODO: prune path to minimize number of waypoints
-        # TODO (if you're feeling ambitious): Try a different approach altogether!
+        # coordinates with respect to home position
+        start_ne_with_offset = (int(start_ne[0]+north_offset), int(start_ne[1]+east_offset), start_ne[2] )
+        goal_ne_with_offset  = (int(goal_ne[0]+north_offset), int(goal_ne[1]+east_offset), goal_ne[2] )
+    
+        print('Local Start and Goal: ', start_ne, goal_ne)
+        print('Local Start and Goal with offset: ', start_ne_with_offset, goal_ne_with_offset)
+        
+        use_voronoi = False
+        if use_voronoi:
+            if not os.path.exists("./edges.pkl"):
+                edges = create_voronoi_edges(grid, points)
+                with open('edges.pkl', 'wb') as f:
+                    pickle.dump(edges, f)
+            else:
+                print("Loading cached edges")
+                with open('edges.pkl', 'rb') as f:
+                    edges = pickle.load(f)        
+        
+            G = nx.Graph()
+            # Stepping through each edge
+            for e in edges:
+                p1 = e[0]
+                p2 = e[1]        
+                dist = np.linalg.norm(np.array(p2) - np.array(p1))
+                G.add_edge(p1, p2, weight=dist)        
+        else:            
+            
+            if not os.path.exists("./graph.pkl"):
+                print("Sampling points")
+                sampler = Sampler(data)
+                polygons = sampler._polygons
+                print("number of polygons ", len(polygons))
+                nodes = sampler.sample(200)
 
+                nodes.append(start_ne_with_offset)
+                nodes.append(goal_ne_with_offset)
+                t0 = time.time()
+                print("Creating prob graph")
+                G = create_probabilistic_graph(nodes, 8, polygons)
+                print(f'graph took {time.time()-t0} seconds to build')
+            
+                with open('graph.pkl', 'wb') as f:
+                    pickle.dump(G, f)
+            else:
+                print("Loading cached graph")
+                with open('graph.pkl', 'rb') as f:
+                    G = pickle.load(f)   
+                    
+        print("Running A star")
+        path, cost = a_star_graph(G, heuristic, start_ne_with_offset, goal_ne_with_offset)
+        
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
-        # Set self.waypoints
+        waypoints_before_conversion = [p for p in path]
+        print(waypoints_before_conversion)                
+        
+        waypoints = [[int(p[0]), int(p[1]), int(p[2]), 0] for p in waypoints_before_conversion]
+        
+        print("waypoints, len(waypoints) ", waypoints, len(waypoints))        
+        
         self.waypoints = waypoints
-        # TODO: send waypoints to sim (this is just for visualization of waypoints)
+        # Send waypoints to simulator for visualization
         self.send_waypoints()
 
     def start(self):
@@ -178,7 +338,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
-    drone = MotionPlanning(conn)
+    drone = MotionPlanner(conn)
     time.sleep(1)
 
     drone.start()
