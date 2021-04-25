@@ -15,84 +15,12 @@ from sampling import Sampler
 from sklearn.neighbors import KDTree
 from pykdtree.kdtree import KDTree as KDTreePy
 
-# Python3 code for generating points on a 3-D line 
-# using Bresenham's Algorithm
-# https://www.geeksforgeeks.org/bresenhams-algorithm-for-3-d-line-drawing/  
-def Bresenham3D(x1, y1, z1, x2, y2, z2):
-    ListOfPoints = []
-    ListOfPoints.append((x1, y1, z1))
-    dx = abs(x2 - x1)
-    dy = abs(y2 - y1)
-    dz = abs(z2 - z1)
-    if (x2 > x1):
-        xs = 1
-    else:
-        xs = -1
-    if (y2 > y1):
-        ys = 1
-    else:
-        ys = -1
-    if (z2 > z1):
-        zs = 1
-    else:
-        zs = -1
-  
-    # Driving axis is X-axis"
-    if (dx >= dy and dx >= dz):        
-        p1 = 2 * dy - dx
-        p2 = 2 * dz - dx
-        while (x1 != x2):
-            x1 += xs
-            if (p1 >= 0):
-                y1 += ys
-                p1 -= 2 * dx
-            if (p2 >= 0):
-                z1 += zs
-                p2 -= 2 * dx
-            p1 += 2 * dy
-            p2 += 2 * dz
-            ListOfPoints.append((x1, y1, z1))
-  
-    # Driving axis is Y-axis"
-    elif (dy >= dx and dy >= dz):       
-        p1 = 2 * dx - dy
-        p2 = 2 * dz - dy
-        while (y1 != y2):
-            y1 += ys
-            if (p1 >= 0):
-                x1 += xs
-                p1 -= 2 * dy
-            if (p2 >= 0):
-                z1 += zs
-                p2 -= 2 * dy
-            p1 += 2 * dx
-            p2 += 2 * dz
-            ListOfPoints.append((x1, y1, z1))
-  
-    # Driving axis is Z-axis"
-    else:        
-        p1 = 2 * dy - dz
-        p2 = 2 * dx - dz
-        while (z1 != z2):
-            z1 += zs
-            if (p1 >= 0):
-                y1 += ys
-                p1 -= 2 * dz
-            if (p2 >= 0):
-                x1 += xs
-                p2 -= 2 * dz
-            p1 += 2 * dy
-            p2 += 2 * dx
-            ListOfPoints.append((x1, y1, z1))
-    return ListOfPoints
-
-
 def create_grid(data, drone_altitude, safety_distance):
     """
     Returns a grid representation of a 2D configuration space
     based on given obstacle data, drone altitude and safety distance
     arguments.
-    """ 
+    """
     print("Creating grid")
     # minimum and maximum north coordinates
     north_min = np.floor(np.min(data[:, 0] - data[:, 3]))
@@ -166,8 +94,9 @@ def create_voronoi_edges(grid, points):
             # array to tuple for future graph creation step)
             p1 = (p1[0], p1[1])
             p2 = (p2[0], p2[1])
+
             edges.append((p1, p2))
-    print("finished creating edges")
+    print("finished voronoi")
     return edges
 
 # Assume all actions cost the same.
@@ -209,6 +138,8 @@ def valid_actions(grid, current_node):
 
     # check if the node is off the grid or
     # it's an obstacle
+    if x >= grid.shape[0] - 1 or y >= grid.shape[1] - 1:
+        return []
 
     if x - 1 < 0 or grid[x - 1, y] == 1:
         valid_actions.remove(Action.NORTH)
@@ -225,7 +156,7 @@ def valid_actions(grid, current_node):
             valid_actions.remove(Action.SOUTHWEST)
         except ValueError:
             pass
-    if y + 1 > m or grid[x, y + 1] == 1:        
+    if y + 1 > m or grid[x, y + 1] == 1:
         valid_actions.remove(Action.EAST)
         try:
             valid_actions.remove(Action.NORTHEAST)
@@ -245,16 +176,16 @@ def a_star(grid, h, start, goal):
 
     branch = {}
     found = False
-    
+
     while not queue.empty():
         item = queue.get()
         current_node = item[1]
         if current_node == start:
             current_cost = 0.0
-        else:              
+        else:
             current_cost = branch[current_node][0]
-        
-        if current_node == goal:        
+
+        if current_node == goal:
             print('Found a path.')
             found = True
             break
@@ -265,13 +196,12 @@ def a_star(grid, h, start, goal):
                 next_node = (current_node[0] + da[0], current_node[1] + da[1])
                 branch_cost = current_cost + action.cost
                 queue_cost = branch_cost + h(next_node, goal)
-                
-                if next_node not in visited:                
-                    visited.add(next_node)               
+
+                if next_node not in visited:
+                    visited.add(next_node)
                     branch[next_node] = (branch_cost, current_node, action)
-                    queue.put((queue_cost, next_node))    
-    # end of while loop                                 
-    
+                    queue.put((queue_cost, next_node))
+    # end of while loop
     if found:
         # retrace steps
         n = goal
@@ -284,12 +214,12 @@ def a_star(grid, h, start, goal):
     else:
         print('**********************')
         print('Failed to find a path!')
-        print('**********************') 
+        print('**********************')
     return path[::-1], path_cost
 
 def a_star_graph(graph, h, start, goal):
     """Modified A* to work with NetworkX graphs."""
-    
+
     path = []
     path_cost = 0
     queue = PriorityQueue()
@@ -298,16 +228,16 @@ def a_star_graph(graph, h, start, goal):
 
     branch = {}
     found = False
-    
+
     while not queue.empty():
         item = queue.get()
         current_node = item[1]
         if current_node == start:
             current_cost = 0.0
-        else:              
+        else:
             current_cost = branch[current_node][0]
-            
-        if current_node == goal:        
+
+        if current_node == goal:
             print('Found a path.')
             found = True
             break
@@ -316,12 +246,12 @@ def a_star_graph(graph, h, start, goal):
                 cost = graph.edges[current_node, next_node]['weight']
                 branch_cost = current_cost + cost
                 queue_cost = branch_cost + h(next_node, goal)
-                
-                if next_node not in visited:                
-                    visited.add(next_node)                    
+
+                if next_node not in visited:
+                    visited.add(next_node)
                     queue.put((queue_cost, next_node))
                     branch[next_node] = (branch_cost, current_node)
-                    
+
     if found:
         # retrace steps
         n = goal
@@ -334,11 +264,11 @@ def a_star_graph(graph, h, start, goal):
     else:
         print('**********************')
         print('Failed to find a path!')
-        print('**********************') 
+        print('**********************')
     return path[::-1], path_cost
 
 def heuristic(n1, n2):
-    return  np.linalg.norm(np.array(n2) - np.array(n1))
+    return np.linalg.norm(np.array(n2) - np.array(n1))
 
 def closest_point(graph, current_point):
     """
@@ -354,25 +284,22 @@ def closest_point(graph, current_point):
             dist = d
     return closest_point
 
-
 def extract_polygons(data):
 
     polygons = []
     for i in range(data.shape[0]):
         north, east, alt, d_north, d_east, d_alt = data[i, :]
-        
-        # TODO: Extract the 4 corners of each obstacle
-        # 
-        # NOTE: The order of the points needs to be counterclockwise
+
+        # Extract the 4 corners of each obstacle
+        #
+        # The order of the points needs to be counterclockwise
         # in order to work with the simple angle test
         # Also, `shapely` draws sequentially from point to point.
-        #
-        # If the area of the polygon in shapely is 0 
-        # you've likely got a weird order.
         obstacle = [north - d_north, north + d_north, east - d_east, east + d_east]
-        corners = [(obstacle[0], obstacle[2]), (obstacle[0], obstacle[3]), (obstacle[1], obstacle[3]), (obstacle[1], obstacle[2])]
-        
-        # TODO: Compute the height of the polygon
+        corners = [(obstacle[0], obstacle[2]), (obstacle[0], obstacle[3]),
+                  (obstacle[1], obstacle[3]), (obstacle[1], obstacle[2])]
+
+        # Compute the height of the polygon
         height = alt + d_alt
 
         p = Polygon(corners)
@@ -380,16 +307,15 @@ def extract_polygons(data):
 
     return polygons
 
-def collides(polygons, point):   
+def collides(polygons, point):
     for (p, height) in polygons:
         if p.contains(Point(point)) and height >= point[2]:
             return True
     return False
 
-
 def can_connect(n1, n2, polygons):
     l = LineString([n1, n2])
-    
+
     for p in polygons:
         if p.crosses(l) and p.height >= min(n1[2], n2[2]):
             return False
@@ -398,15 +324,12 @@ def can_connect(n1, n2, polygons):
 def create_probabilistic_graph(nodes, k, polygons):
     g = nx.Graph()
     tree = KDTree(nodes)
-    #tree = KDTreePy(np.array(nodes))
     for n1 in nodes:
         # for each node connect try to connect to k nearest nodes
-        #dist, idxs = tree.query(np.array([n1]), k)        
-        dist, idxs = tree.query([n1], k)        
-        #print(idxs, type(idxs))
-        idxs = idxs[0] 
+        dist, idxs = tree.query([n1], k)
+        idxs = idxs[0]
         for idx in idxs:
-    
+
             n2 = nodes[idx]
             if n2 == n1:
                 continue
@@ -423,7 +346,7 @@ if __name__ == "__main__":
     start_ne = (316, 445, 5)
     goal_ne = (750, 370, 5)
 
-    grid, north_offset, east_offset, points = create_grid(data, 10, 5)
+    grid, north_offset, east_offset, points = create_grid(data, 5, 5)
 
     fig = plt.figure()
     plt.xlabel('EAST')
@@ -438,12 +361,12 @@ if __name__ == "__main__":
     sampler = Sampler(data)
     polygons = sampler._polygons
 
-    nodes = sampler.sample(200)
+    nodes = sampler.sample(300)
 
     # Convert to "map" coordinates
-    start_ne_with_offset = (int(start_ne[0]+north_offset), int(start_ne[1]+east_offset), start_ne[2])
-    goal_ne_with_offset  = (int(goal_ne[0]+north_offset), int(goal_ne[1]+east_offset), goal_ne[2] )
-    
+    start_ne_with_offset = (int(start_ne[0]+north_offset), int(start_ne[1]+east_offset), int(start_ne[2]))
+    goal_ne_with_offset  = (int(goal_ne[0]+north_offset), int(goal_ne[1]+east_offset), int(goal_ne[2]) )
+
     print('Local Start and Goal: ', start_ne, goal_ne)
     print('Local Start and Goal no offset: ', start_ne_with_offset, goal_ne_with_offset)
 
@@ -456,7 +379,8 @@ if __name__ == "__main__":
 
     with open('graph.pkl', 'wb') as f:
         pickle.dump(g, f)
-
+    for i in list(g.nodes):
+        print(i)
     # draw nodes
     for n1 in g.nodes:
         plt.scatter(n1[1] - east_offset, n1[0] - north_offset, c='red')

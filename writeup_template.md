@@ -3,80 +3,134 @@
 
 ---
 
-
-# Required Steps for a Passing Submission:
-1. Load the 2.5D map in the colliders.csv file describing the environment.
-2. Discretize the environment into a grid or graph representation.
-3. Define the start and goal locations.
-4. Perform a search using A* or other search algorithm.
-5. Use a collinearity test or ray tracing method (like Bresenham) to remove unnecessary waypoints.
-6. Return waypoints in local ECEF coordinates (format for `self.all_waypoints` is [N, E, altitude, heading], where the drone’s start location corresponds to [0, 0, 0, 0].
-7. Write it up.
-8. Congratulations!  Your Done!
-
 ## [Rubric](https://review.udacity.com/#!/rubrics/1534/view) Points
-### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.  
+### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.
 
 ---
 ### Writeup / README
 
-#### 1. Provide a Writeup / README that includes all the rubric points and how you addressed each one.  You can submit your writeup as markdown or pdf.  
-
-You're reading it! Below I describe how I addressed each rubric point and where in my code each point is handled.
-
 ### Explain the Starter Code
 
 #### 1. Explain the functionality of what's provided in `motion_planning.py` and `planning_utils.py`
-These scripts contain a basic planning implementation that includes...
+These scripts contain a basic planning implementation that includes,
+a basic solution for the path planing problem using a complete grid
+approach. Additionally a graph is also computed with using the Voronoi
+approach. This graph is feed to the A* algorithm
 
-And here's a lovely image of my results (ok this image has nothing to do with it, but it's a nice example of how to include images in your writeup!)
-![Top Down View](./misc/high_up.png)
+### Implementing The Path Planning Algorithm
 
-Here's | A | Snappy | Table
---- | --- | --- | ---
-1 | `highlight` | **bold** | 7.41
-2 | a | b | c
-3 | *italic* | text | 403
-4 | 2 | 3 | abcd
+#### 1. Set the drone's global home position (Done)
+The home's longitude and latitude are extracted from the csv file using
+several string manipulation methods in lines 236-238. In line 240 the
+self.set_home_position method is used to... to set the home position.
 
-### Implementing Your Path Planning Algorithm
+#### 2. Set your current local position (Done)
+In order to define a "local position" we need to define a home position in the map, so we can have our local position relative to our home position. This is achieved in line 242 where the function global_to_local is used to convert the global position to local, north east and down coordinates.
 
-#### 1. Set your global home position
-Here students should read the first line of the csv file, extract lat0 and lon0 as floating point values and use the self.set_home_position() method to set global home. Explain briefly how you accomplished this in your code.
-
-
-And here is a lovely picture of our downtown San Francisco environment from above!
-![Map of SF](./misc/map.png)
-
-#### 2. Set your current local position
-Here as long as you successfully determine your local position relative to global home you'll be all set. Explain briefly how you accomplished this in your code.
-
-
-Meanwhile, here's a picture of me flying through the trees!
-![Forest Flying](./misc/in_the_trees.png)
-
-#### 3. Set grid start position from local position
-This is another step in adding flexibility to the start location. As long as it works you're good to go!
-
-#### 4. Set grid goal position from geodetic coords
-This step is to add flexibility to the desired goal location. Should be able to choose any (lat, lon) within the map and have it rendered to a goal location on the grid.
+#### 3. Set grid start position from local position (Done)
+Line `253` in `motion_planning.py`.
+#### 4. Set grid goal position from geodetic coords (Done)
+Line `256` `motion_planning.py`.
 
 #### 5. Modify A* to include diagonal motion (or replace A* altogether)
-Minimal requirement here is to modify the code in planning_utils() to update the A* implementation to include diagonal motions on the grid that have a cost of sqrt(2), but more creative solutions are welcome. Explain the code you used to accomplish this step.
 
-#### 6. Cull waypoints 
-For this step you can use a collinearity test or ray tracing method like Bresenham. The idea is simply to prune your path of unnecessary waypoints. Explain the code you used to accomplish this step.
+##### 1. Solution
+First the a basic solution of the project is implemented. The grid, the heuristic, the start and the goal are given to the a_star algorithm.
+To do this the Action class is modified as suggested, adding the diagonal
+motions NORTHWEST-SOUTHEAST. To handle possible errors when removing actions,
+try/except clauses are addded to the valid_actions method. The result generated
+is shown in the image below. With this solution the total number of waypoints is
+436. As mentioned in the lectures this is very inefficient since we are visiting
+every single point on the grid on the way to our goal.
 
+![Basic A_star + grid solution](./images/basic_solution.jpg)
+
+With the basic solution we get 452 points to the given goal. But this is optimized in
+the cull/pruning section.
+
+Interesting to note: the grid base method take a very long time to finish
+when the drone is trying to look for a route in open space.
+
+
+##### 2. Solution
+
+The second implemented solution uses the graph approach. The `create_voronoi_edges(grid, points)`, in `planning_utils.py` is implemented on line `136`. This approach is applied from line `273` to `295`. It is useful to cache the graph for faster computation.Since this is a static map we can do this. If we had a continously moving map we would have to try another approach. After the edges are calculated, they are added to the `nx_graph` object. Then the closest points from the Voronoi graph to the given start and goal are given. From what I have seen these points are usually close enough but one could also add the points to the path to make it exact.
+
+![Voronoi + graph search solution](./images/voronoi_no_pruning.png)
+
+##### 3. Solution
+The third implemented solution uses the probabilistic roadmap approach. This approach
+is implemented between lines `292` and `314`. Points are randomly scattered thouughout the map avoiding to have points that overlap with polygons. This is done with the provided `Sample` class. The start and goal points are added to the nodes list
+and the the function `create_probabilistic_graph` is run with the nodes, connections,
+and polygons as arguments. This function takes a very long time (~thousands of seconds)
+and really needs to be optmized. In order to have a faster execution time, the graph is
+cached. The path is very quick and efficient going above buildings without issues.
+
+![Probabilistic Roadmap Solution](./images/polygonSolution2.png)
+
+npoints 11
+
+#### 6. Cull waypoints (Done)
+
+##### 1. Pruning for basic/grid only solution
+As a basic pruning I first use a collinearity test. Implemented
+in the function `prune_path` and applied to the obtained waypoints in line `274`.
+
+![Basic A_star + grid + collinearity prune solution](./images/basic_solutions_with_collinearity_prune.png)
+
+Npoints= 52
+
+Bresenham is also implemented and applied and in (line `68` and `275` respectively ) this results only in 9 points, but usually fails. It may be that the map coordinates are not completely correct,
+but this need to be further investigated.
+
+![Basic A_star + grid + bresenham prune solution](./images/bresenham.png)
+
+9 points.
+
+##### 2. Pruning for Voronoi solution
+
+
+![Voronoi graph + bresenham prune solution](./images/voronoi_bresenham.png)
+
+8 points
+
+
+![Voronoi graph + collinearity prune solution](./images/voronoi_collinearity.png)
+
+35 points
+
+#### 7. Table Summary (Done)
+
+
+Index | Approach | Npts | Works? | Comments
+--- | --- | --- | --- | ---
+1 | A* + grid | 452 | Yes | Too many points
+2 | A* + grid + coll | 52 | Yes | Works well
+3 | A* + grid + bres | 5 | No | Crashes in corner of building
+4 | Voronoi, A* graph | 48 | yes  | --
+5 | Voronoi, A* graph collinear  | 35 | yes | --
+6 | Voronoi, A* graph bres | 4 | yes | works very well
+7 | Polygon 3D, A* graph | 9  | yes | graph takes thousands seconds to build!
 
 
 ### Execute the flight
 #### 1. Does it work?
 It works!
 
-### Double check that you've met specifications for each of the [rubric](https://review.udacity.com/#!/rubrics/1534/view) points.
-  
-# Extra Challenges: Real World Planning
-
-For an extra challenge, consider implementing some of the techniques described in the "Real World Planning" lesson. You could try implementing a vehicle model to take dynamic constraints into account, or implement a replanning method to invoke if you get off course or encounter unexpected obstacles.
 
 
+
+#### Issues
+
+
+```python
+Traceback (most recent call last):
+  File "/home/david/miniconda3/envs/fcnd/lib/python3.6/site-packages/udacidrone/connection/connection.py", line 88, in notify_message_listeners
+    fn(name, msg)
+  File "/home/david/miniconda3/envs/fcnd/lib/python3.6/site-packages/udacidrone/drone.py", line 119, in on_message_receive
+    if (((msg.time - self._message_time) > 0.0)):
+AttributeError: 'int' object has no attribute 'time'
+```
+
+A common occurence :D:
+![Glued Drone](./images/dronestucked.png)
