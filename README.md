@@ -1,83 +1,136 @@
-# 3D Motion Planning
+## Project: 3D Motion Planning
 ![Quad Image](./misc/enroute.png)
 
-This project is a continuation of the Backyard Flyer project where you executed a simple square shaped flight path. In this project you will integrate the techniques that you have learned throughout the last several lessons to plan a path through an urban environment. Check out the [project rubric](https://review.udacity.com/#!/rubrics/1534/view) for more detail on what constitutes a passing submission.
+---
 
-## Setup instructions
-### Step 1: Download the Simulator
-This is a new simulator environment!  
+## [Rubric](https://review.udacity.com/#!/rubrics/1534/view) Points
+### Here I will consider the rubric points individually and describe how I addressed each point in my implementation.
 
-Download the Motion-Planning simulator for this project that's appropriate for your operating system from the [simulator releases respository](https://github.com/udacity/FCND-Simulator-Releases/releases).
+---
+### Writeup / README
 
-### Step 2: Set up your Python Environment
-If you haven't already, set up your Python environment and get all the relevant packages installed using Anaconda following instructions in [this repository](https://github.com/udacity/FCND-Term1-Starter-Kit)
+### Explain the Starter Code
 
-### Step 3: Clone this Repository
-```sh
-git clone https://github.com/udacity/FCND-Motion-Planning
-```
-### Step 4: Test setup
-The first task in this project is to test the [solution code](https://github.com/udacity/FCND-Motion-Planning/blob/master/backyard_flyer_solution.py) for the Backyard Flyer project in this new simulator. Verify that your Backyard Flyer solution code works as expected and your drone can perform the square flight path in the new simulator. To do this, start the simulator and run the [`backyard_flyer_solution.py`](https://github.com/udacity/FCND-Motion-Planning/blob/master/backyard_flyer_solution.py) script.
+#### 1. Explain the functionality of what's provided in `motion_planning.py` and `planning_utils.py`
+These scripts contain a basic planning implementation that includes,
+a basic solution for the path planing problem using a complete grid
+approach. Additionally a graph is also computed with using the Voronoi
+approach. This graph is feed to the A* algorithm
 
-```sh
-source activate fcnd # if you haven't already sourced your Python environment, do so now.
-python backyard_flyer_solution.py
-```
-The quad should take off, fly a square pattern and land, just as in the previous project. If everything functions as expected then you are ready to start work on this project. 
+### Implementing The Path Planning Algorithm
 
-### Step 5: Inspect the relevant files
-For this project, you are provided with two scripts, `motion_planning.py` and `planning_utils.py`. Here you'll also find a file called `colliders.csv`, which contains the 2.5D map of the simulator environment. 
+#### 1. Set the drone's global home position (Done)
+The home's longitude and latitude are extracted from the csv file using
+several string manipulation methods in lines 236-238. In line 240 the
+self.set_home_position method is used to... to set the home position.
 
-### Step 6: Explain what's going on in  `motion_planning.py` and `planning_utils.py`
+#### 2. Set your current local position (Done)
+In order to define a "local position" we need to define a home position in the map, so we can have our local position relative to our home position. This is achieved in line 242 where the function global_to_local is used to convert the global position to local, north east and down coordinates.
 
-`motion_planning.py` is basically a modified version of `backyard_flyer.py` that leverages some extra functions in `planning_utils.py`. It should work right out of the box.  Try running `motion_planning.py` to see what it does. To do this, first start up the simulator, then at the command line:
- 
-```sh
-source activate fcnd # if you haven't already sourced your Python environment, do so now.
-python motion_planning.py
-```
+#### 3. Set grid start position from local position (Done)
+Line `253` in `motion_planning.py`.
+#### 4. Set grid goal position from geodetic coords (Done)
+Line `256` `motion_planning.py`.
 
-You should see the quad fly a jerky path of waypoints to the northeast for about 10 m then land.  What's going on here? Your first task in this project is to explain what's different about `motion_planning.py` from the `backyard_flyer_solution.py` script, and how the functions provided in `planning_utils.py` work. 
+#### 5. Modify A* to include diagonal motion (or replace A* altogether)
 
-### Step 7: Write your planner
+##### 1. Solution
+First the a basic solution of the project is implemented. The grid, the heuristic, the start and the goal are given to the a_star algorithm.
+To do this the Action class is modified as suggested, adding the diagonal
+motions NORTHWEST-SOUTHEAST. To handle possible errors when removing actions,
+try/except clauses are addded to the valid_actions method. The result generated
+is shown in the image below. With this solution the total number of waypoints is
+436. As mentioned in the lectures this is very inefficient since we are visiting
+every single point on the grid on the way to our goal.
 
-Your planning algorithm is going to look something like the following:
+![Basic A_star + grid solution](./images/basic_solution.jpg)
 
-- Load the 2.5D map in the `colliders.csv` file describing the environment.
-- Discretize the environment into a grid or graph representation.
-- Define the start and goal locations. You can determine your home location from `self._latitude` and `self._longitude`. 
-- Perform a search using A* or other search algorithm. 
-- Use a collinearity test or ray tracing method (like Bresenham) to remove unnecessary waypoints.
-- Return waypoints in local ECEF coordinates (format for `self.all_waypoints` is [N, E, altitude, heading], where the drone’s start location corresponds to [0, 0, 0, 0]). 
+With the basic solution we get 452 points to the given goal. But this is optimized in
+the cull/pruning section.
 
-Some of these steps are already implemented for you and some you need to modify or implement yourself.  See the [rubric](https://review.udacity.com/#!/rubrics/1534/view) for specifics on what you need to modify or implement.
+Interesting to note: the grid base method take a very long time to finish
+when the drone is trying to look for a route in open space.
 
-### Step 8: Write it up!
-When you're finished, complete a detailed writeup of your solution and discuss how you addressed each step. You can use the [`writeup_template.md`](./writeup_template.md) provided here or choose a different format, just be sure to describe clearly the steps you took and code you used to address each point in the [rubric](https://review.udacity.com/#!/rubrics/1534/view). And have fun!
 
-## Extra Challenges
-The submission requirements for this project are laid out in the rubric, but if you feel inspired to take your project above and beyond, or maybe even keep working on it after you submit, then here are some suggestions for interesting things to try.
+##### 2. Solution
 
-### Try flying more complex trajectories
-In this project, things are set up nicely to fly right-angled trajectories, where you ascend to a particular altitude, fly a path at that fixed altitude, then land vertically. However, you have the capability to send 3D waypoints and in principle you could fly any trajectory you like. Rather than simply setting a target altitude, try sending altitude with each waypoint and set your goal location on top of a building!
+The second implemented solution uses the graph approach. The `create_voronoi_edges(grid, points)`, in `planning_utils.py` is implemented on line `136`. This approach is applied from line `273` to `295`. It is useful to cache the graph for faster computation.Since this is a static map we can do this. If we had a continously moving map we would have to try another approach. After the edges are calculated, they are added to the `nx_graph` object. Then the closest points from the Voronoi graph to the given start and goal are given. From what I have seen these points are usually close enough but one could also add the points to the path to make it exact.
 
-### Adjust your deadbands
-Adjust the size of the deadbands around your waypoints, and even try making deadbands a function of velocity. To do this, you can simply modify the logic in the `local_position_callback()` function.
+![Voronoi + graph search solution](./images/voronoi_no_pruning.png)
 
-### Add heading commands to your waypoints
-This is a recent update! Make sure you have the [latest version of the simulator](https://github.com/udacity/FCND-Simulator-Releases/releases). In the default setup, you're sending waypoints made up of NED position and heading with heading set to 0 in the default setup. Try passing a unique heading with each waypoint. If, for example, you want to send a heading to point to the next waypoint, it might look like this:
+##### 3. Solution
+The third implemented solution uses the probabilistic roadmap approach. This approach
+is implemented between lines `292` and `314`. Points are randomly scattered thouughout the map avoiding to have points that overlap with polygons. This is done with the provided `Sample` class. The start and goal points are added to the nodes list
+and the the function `create_probabilistic_graph` is run with the nodes, connections,
+and polygons as arguments. This function takes a very long time (~thousands of seconds)
+and really needs to be optmized. In order to have a faster execution time, the graph is
+cached. The path is very quick and efficient going above buildings without issues.
+
+![Probabilistic Roadmap Solution](./images/polygonSolution2.png)
+
+npoints 11
+
+#### 6. Cull waypoints (Done)
+
+##### 1. Pruning for basic/grid only solution
+As a basic pruning I first use a collinearity test. Implemented
+in the function `prune_path` and applied to the obtained waypoints in line `274`.
+
+![Basic A_star + grid + collinearity prune solution](./images/basic_solutions_with_collinearity_prune.png)
+
+Npoints= 52
+
+Bresenham is also implemented and applied and in (line `68` and `275` respectively ) this results only in 9 points, but usually fails. It may be that the map coordinates are not completely correct,
+but this need to be further investigated.
+
+![Basic A_star + grid + bresenham prune solution](./images/bresenham.png)
+
+9 points.
+
+##### 2. Pruning for Voronoi solution
+
+
+![Voronoi graph + bresenham prune solution](./images/voronoi_bresenham.png)
+
+8 points
+
+
+![Voronoi graph + collinearity prune solution](./images/voronoi_collinearity.png)
+
+35 points
+
+#### 7. Table Summary (Done)
+
+
+Index | Approach | Npts | Works? | Comments
+--- | --- | --- | --- | ---
+1 | A* + grid | 452 | Yes | Too many points
+2 | A* + grid + coll | 52 | Yes | Works well
+3 | A* + grid + bres | 5 | No | Crashes in corner of building
+4 | Voronoi, A* graph | 48 | yes  | --
+5 | Voronoi, A* graph collinear  | 35 | yes | --
+6 | Voronoi, A* graph bres | 4 | yes | works very well
+7 | Polygon 3D, A* graph | 9  | yes | graph takes thousands seconds to build!
+
+
+### Execute the flight
+#### 1. Does it work?
+It works!
+
+
+
+
+#### Issues
+
 
 ```python
-# Define two waypoints with heading = 0 for both
-wp1 = [n1, e1, a1, 0]
-wp2 = [n2, e2, a2, 0]
-# Set heading of wp2 based on relative position to wp1
-wp2[3] = np.arctan2((wp2[1]-wp1[1]), (wp2[0]-wp1[0]))
+Traceback (most recent call last):
+  File "/home/david/miniconda3/envs/fcnd/lib/python3.6/site-packages/udacidrone/connection/connection.py", line 88, in notify_message_listeners
+    fn(name, msg)
+  File "/home/david/miniconda3/envs/fcnd/lib/python3.6/site-packages/udacidrone/drone.py", line 119, in on_message_receive
+    if (((msg.time - self._message_time) > 0.0)):
+AttributeError: 'int' object has no attribute 'time'
 ```
 
-This may not be completely intuitive, but this will yield a yaw angle that is positive counterclockwise about a z-axis (down) axis that points downward.
-
-Put all of these together and make up your own crazy paths to fly! Can you fly a double helix?? 
-![Double Helix](./misc/double_helix.gif)
-
-Ok flying a double helix might seem like a silly idea, but imagine you are an autonomous first responder vehicle. You need to first fly to a particular building or location, then fly a reconnaissance pattern to survey the scene! Give it a try!
+A common occurence :D:
+![Glued Drone](./images/dronestucked.png)
