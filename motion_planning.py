@@ -254,8 +254,8 @@ class MotionPlanner(Drone):
         goal_ne = (int(goal_north ), int(goal_east ), int(goal_down))
 
         use_voronoi = False
-        use_grid = False
-        use_polygon_graph = True
+        use_grid = True
+        use_polygon_graph = False
 
         if use_grid:
             # convert to grid "coordinate" system i.e. origin is at minimum north, east
@@ -294,6 +294,7 @@ class MotionPlanner(Drone):
             waypoints_before_conversion = [p for p in path]
 
         elif use_polygon_graph:
+            print("Running polygon approach")
             if not os.path.exists("./graph.pkl"):
                 sampler = Sampler(data)
                 polygons = sampler._polygons
@@ -318,7 +319,7 @@ class MotionPlanner(Drone):
             path, cost = a_star_graph(G, heuristic, start_ne, goal_ne)
             waypoints_before_conversion = [p for p in path]
 
-        collinearity_prune = False
+        collinearity_prune = True
         bresenham_prune = False
 
         if bresenham_prune:
