@@ -319,13 +319,7 @@ class MotionPlanner(Drone):
             path, cost = a_star_graph(G, heuristic, start_ne, goal_ne)
             waypoints_before_conversion = [p for p in path]
 
-        collinearity_prune = True
-        bresenham_prune = False
-
-        if bresenham_prune:
-            waypoints_before_conversion = prune_with_bresenham(waypoints_before_conversion, grid)
-        elif collinearity_prune:
-            waypoints_before_conversion = self.prune_path(waypoints_before_conversion)
+        waypoints_before_conversion = self.prune_path(waypoints_before_conversion)
 
         if use_polygon_graph:
             waypoints = [[int(p[0]), int(p[1]), int(p[2]), 0] for p in waypoints_before_conversion]
